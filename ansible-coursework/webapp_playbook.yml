@@ -1,0 +1,200 @@
+-
+  name: Play 1 - Install and enable firewalld on both hosts, disable SELinux, then reboot
+  hosts: all
+  become: yes
+  tasks:
+    -
+      name: install firewalld
+      yum:
+        name: firewalld
+        state: present
+    -
+      name: start firewalld service
+      service: 
+        name: firewalld
+        state: started
+        enabled: yes
+    -
+      name: disable SELinux
+      ansible.posix.selinux:
+        state: disabled
+-
+  name: Play 2 - Deploy and configure database
+  hosts: db
+  become: yes
+  tasks:
+    -
+      name: install gcc
+      yum:
+        name: gcc
+        state: present
+    -
+      name: install python3-devel
+      yum:
+        name: python3-devel
+        state: present
+    -
+      name: install mariadb
+      yum:
+        name: mariadb-server
+        state: present
+    -
+      name: install mariadb developer library
+      yum:
+        name: mariadb-devel
+        state: present
+    -
+      name: install epel-release repo
+      yum:
+        name: epel-release
+        state: present
+    -
+      name: install python3-setuptools
+      yum:
+        name: python3-setuptools
+        state: present
+    -
+      name: install python3-pip
+      yum:
+       name: python3-pip
+       state: present
+    -
+      name: install mysqlclient (pip3 package)
+      pip:
+        name: mysqlclient
+        state: present
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+    -
+      name: start the mariadb service
+      service:
+        name: mariadb
+        state: started
+        enabled: yes
+    -
+      name: configure firewalld for db
+      ansible.posix.firewalld:
+        port: 3306/tcp
+        permanent: yes
+        immediate: yes
+        zone: public
+        state: enabled
+    -
+      name: bounce firewalld
+      service:
+        name: firewalld
+        state: restarted
+        enabled: yes
+    -
+      name: Set MySQL root Password
+      command: mysqladmin -u root password t00GH3y!
+    -
+      name: create ecomdb database
+      community.mysql.mysql_db:
+        name: ecomdb
+        state: present
+        login_user: root
+        login_password: t00GH3y!
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+    -
+      name: create ecomdb user
+      community.mysql.mysql_user:
+        login_user: root
+        login_password: t00GH3y!
+        name: ecomuser
+        password: ecompassword
+        priv: '*.*:ALL'
+        host: 192.168.50.124
+        state: present
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+    -
+      name: flush privileges
+      community.mysql.mysql_query:
+        login_db: ecomdb
+        login_user: root
+        login_password: t00GH3y!
+        query: FLUSH PRIVILEGES;
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+    -
+      name: populate database 1 - create table
+      community.mysql.mysql_query:
+        login_db: ecomdb
+        login_user: root
+        login_password: t00GH3y!
+        query: CREATE TABLE products (id mediumint(8) unsigned NOT NULL auto_increment,Name varchar(255) default NULL,Price varchar(255) default NULL, ImageUrl varchar(255) default NULL,PRIMARY KEY (id)) AUTO_INCREMENT=1;
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+    -
+      name: populate database 2 - insert items
+      community.mysql.mysql_query:
+        login_db: ecomdb
+        login_user: root
+        login_password: t00GH3y!
+        query: INSERT INTO products (Name,Price,ImageUrl) VALUES ("Laptop","100","c-1.png"),("Drone","200","c-2.png"),("VR","300","c-3.png"),("Tablet","50","c-5.png"),("Watch","90","c-6.png"),("Phone Covers","20","c-7.png"),("Phone","80","c-8.png"),("Laptop","150","c-4.png");
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
+-
+  name: Play 3 - Deploy and configure the web server 
+  hosts: web
+  become: yes
+  tasks:
+    -
+      name: install httpd
+      yum:
+        name: httpd
+        state: present
+    -
+      name: install php
+      yum:
+        name: php
+        state: present
+    -
+      name: install php-mysql
+      yum:
+        name: php-mysql
+        state: present
+    -
+      name: install git
+      yum:
+        name: git
+        state: present
+    -
+      name: configure firewalld for httpd
+      ansible.posix.firewalld:
+        port: 80/tcp
+        permanent: yes
+        immediate: yes
+        zone: public
+        state: enabled
+    -
+      name: update httpd to use index.php
+      command: sudo sed -i 's/index.html/index.php/g' /etc/httpd/conf/httpd.conf
+    -
+      name: start & enable httpd service
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+    -
+      name: clone the github repo into the correct directory
+      command: sudo git clone https://github.com/kodekloudhub/learning-app-ecommerce.git /var/www/html/
+    -
+      name: replace default DB server IP with your db server IP
+      command: sudo sed -i 's/172.20.1.101/192.168.50.68/g' /var/www/html/index.php
+-
+  name: Play 4 - Reboot both servers to SELinux changes take effect
+  hosts: all
+  become: yes
+  tasks:
+    -
+      name: reboot
+      command: reboot
+-
+  name: Play 4 - Test the web page by curling localhost on the web server
+  hosts: web
+  tasks: 
+    -
+      name: curl localhost
